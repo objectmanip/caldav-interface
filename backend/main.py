@@ -1,5 +1,3 @@
-# Copyright (C) 2026 Florian Blümel
-# SPDX-License-Identifier: AGPL-3.0-or-later
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -248,6 +246,146 @@ async def delete_event(req: EventDeleteRequest):
         cal = client.calendar(url=req.calendar_url)
         event = cal.event_by_url(req.event_url)
         event.delete()
+        return {"status": "deleted"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+class TaskCreateRequest(BaseModel):
+    url: str
+    username: str
+    password: str
+    calendar_url: str
+    summary: str
+    due: Optional[str] = None
+
+class TaskCompleteRequest(BaseModel):
+    url: str
+    username: str
+    password: str
+    calendar_url: str
+    task_url: str
+
+class TaskDeleteRequest(BaseModel):
+    url: str
+    username: str
+    password: str
+    calendar_url: str
+    task_url: str
+
+
+def parse_task(task_obj):
+    results = []
+    try:
+        cal = Calendar.from_ical(task_obj.data)
+        for component in cal.walk():
+            if component.name != "VTODO":
+                continue
+            try:
+                due = component.get("due")
+                due_str = ""
+                if due:
+                    due_val = due.dt
+                    due_str = due_val.isoformat() if due_val else ""
+                status = str(component.get("status", "")).upper()
+                completed = component.get("completed")
+                completed_str = ""
+                if completed:
+                    try:
+                        completed_str = completed.dt.isoformat()
+                    except Exception:
+                        pass
+                results.append({
+                    "uid": str(component.get("uid", "")),
+                    "summary": str(component.get("summary", "(No Title)")),
+                    "description": str(component.get("description", "")),
+                    "due": due_str,
+                    "status": status,
+                    "completed": completed_str,
+                    "url": str(task_obj.url),
+                })
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return results
+
+
+@app.post("/api/tasks")
+async def get_tasks(req: ConnectRequest):
+    try:
+        client = get_client(req.url, req.username, req.password)
+        principal = client.principal()
+        calendars = principal.calendars()
+        result = []
+        for cal in calendars:
+            try:
+                todos = cal.todos()
+                for todo in todos:
+                    for parsed in parse_task(todo):
+                        parsed["calendarUrl"] = str(cal.url)
+                        result.append(parsed)
+            except Exception:
+                continue
+        return {"tasks": result}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/tasks/create")
+async def create_task(req: TaskCreateRequest):
+    try:
+        client = get_client(req.url, req.username, req.password)
+        cal = client.calendar(url=req.calendar_url)
+        lines = [
+            "BEGIN:VCALENDAR",
+            "VERSION:2.0",
+            "PRODID:-//CalDAV Frontend//EN",
+            "BEGIN:VTODO",
+            f"SUMMARY:{req.summary}",
+            "STATUS:NEEDS-ACTION",
+        ]
+        if req.due:
+            try:
+                from datetime import date
+                due_date = date.fromisoformat(req.due)
+                lines.append(f"DUE;VALUE=DATE:{due_date.strftime('%Y%m%d')}")
+            except Exception:
+                pass
+        lines += ["END:VTODO", "END:VCALENDAR"]
+        cal.save_todo("\n".join(lines))
+        return {"status": "created"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/tasks/complete")
+async def complete_task(req: TaskCompleteRequest):
+    try:
+        client = get_client(req.url, req.username, req.password)
+        cal = client.calendar(url=req.calendar_url)
+        todo = cal.todo_by_url(req.task_url)
+        todo_cal = Calendar.from_ical(todo.data)
+        for component in todo_cal.walk():
+            if component.name == "VTODO":
+                component["STATUS"] = "COMPLETED"
+                from datetime import datetime, timezone as tz
+                component["COMPLETED"] = datetime.now(tz.utc)
+                break
+        todo.data = todo_cal.to_ical().decode()
+        todo.save()
+        return {"status": "completed"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/tasks/delete")
+async def delete_task(req: TaskDeleteRequest):
+    try:
+        client = get_client(req.url, req.username, req.password)
+        cal = client.calendar(url=req.calendar_url)
+        todo = cal.todo_by_url(req.task_url)
+        todo.delete()
         return {"status": "deleted"}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))

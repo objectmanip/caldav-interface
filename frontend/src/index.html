@@ -256,6 +256,145 @@
   }
   .btn-add-event:hover { background: #d9ff7a; }
 
+  /* ── Tasks ── */
+  #task-section {
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .task-section-header {
+    padding: 12px 20px 6px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .task-section-title {
+    font-size: 1rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+  .task-add-btn {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 1.2rem;
+    cursor: pointer;
+    padding: 0 4px;
+    line-height: 1;
+    transition: color 0.15s;
+    font-family: var(--font);
+  }
+  .task-add-btn:hover { color: var(--accent); }
+  #task-list {
+    padding: 0 10px 8px;
+    max-height: 280px;
+    overflow-y: auto;
+  }
+  .task-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: var(--radius);
+    transition: background 0.1s;
+  }
+  .task-item:hover { background: var(--surface2); }
+  .task-item:hover .task-delete { opacity: 1; }
+  .task-check {
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--border);
+    border-radius: 50%;
+    flex-shrink: 0;
+    cursor: pointer;
+    margin-top: 2px;
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+  }
+  .task-check:hover { border-color: var(--accent); }
+  .task-item.done .task-check {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #111;
+  }
+  .task-body { flex: 1; min-width: 0; }
+  .task-summary {
+    font-size: 1rem;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .task-item.done .task-summary {
+    text-decoration: line-through;
+    color: var(--text-muted);
+  }
+  .task-due {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    font-family: var(--mono);
+    margin-top: 1px;
+  }
+  .task-due.overdue { color: var(--danger); }
+  .task-due.due-today { color: var(--accent); }
+  .task-delete {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 1rem;
+    opacity: 0;
+    padding: 0 2px;
+    transition: color 0.15s, opacity 0.15s;
+    flex-shrink: 0;
+  }
+  .task-delete:hover { color: var(--danger); }
+  .task-add-row {
+    display: flex;
+    gap: 6px;
+    padding: 4px 10px 8px;
+  }
+  .task-add-row input {
+    flex: 1;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 0.9rem;
+    padding: 6px 10px;
+    outline: none;
+    min-width: 0;
+  }
+  .task-add-row input:focus { border-color: var(--accent); }
+  .task-add-row .task-add-date {
+    width: 110px;
+    flex-shrink: 0;
+  }
+  .task-submit-btn {
+    background: var(--accent);
+    border: none;
+    border-radius: var(--radius);
+    color: #111;
+    font-weight: 700;
+    font-size: 1rem;
+    cursor: pointer;
+    padding: 6px 10px;
+    font-family: var(--font);
+    transition: background 0.15s;
+    flex-shrink: 0;
+  }
+  .task-submit-btn:hover { background: #d9ff7a; }
+  .task-empty {
+    padding: 8px 18px 12px;
+    font-size: 0.9rem;
+    color: var(--text-muted);
+  }
+
   /* ── Main ── */
   #main {
     flex: 1;
@@ -812,6 +951,18 @@
       <h2>Kal<span>en</span>der</h2>
       <button class="logout-btn" id="logout-btn">Logout</button>
     </div>
+    <div id="task-section">
+      <div class="task-section-header">
+        <span class="task-section-title">Tasks</span>
+        <button class="task-add-btn" id="task-toggle-add" title="Add task">+</button>
+      </div>
+      <div id="task-add-row" class="task-add-row" style="display:none">
+        <input type="text" id="task-input" placeholder="New task…">
+        <input type="text" id="task-due-input" class="task-add-date" placeholder="DD-MM-YYYY">
+        <button class="task-submit-btn" id="task-submit">↵</button>
+      </div>
+      <div id="task-list"></div>
+    </div>
     <div class="sidebar-section">Calendars</div>
     <div id="calendar-list"></div>
     <div class="sidebar-footer">
@@ -932,6 +1083,7 @@ let state = {
   events: [],
   eventCache: {},      // key -> { events, fetchedAt }
   cacheTTL: 4 * 7 * 24 * 60 * 60 * 1000, // 4 weeks in ms
+  tasks: [],
   view: 'month',
   cursor: new Date(),
   editingEvent: null,
@@ -1035,6 +1187,7 @@ function initApp() {
 
   renderSidebar();
   loadEventsAndRender();
+  loadTasks();
 }
 
 // ── Sidebar ──
@@ -1852,6 +2005,148 @@ function openEditEventModal(ev) {
 
   openModal('event-modal');
 }
+
+// ── Tasks ──
+async function loadTasks() {
+  try {
+    const data = await apiPost('/tasks', state.connection);
+    state.tasks = data.tasks;
+    renderTasks();
+  } catch (e) {
+    console.error('Tasks load error:', e);
+  }
+}
+
+function renderTasks() {
+  const container = document.getElementById('task-list');
+  const today = new Date(); today.setHours(0,0,0,0);
+  const in3days = new Date(today); in3days.setDate(today.getDate() + 3);
+  const todayStr = localDateKey(today);
+
+  // Filter: incomplete tasks due in next 3 days, OR completed today
+  const visible = state.tasks.filter(t => {
+    const isDone = t.status === 'COMPLETED';
+    if (isDone) {
+      if (!t.completed) return false;
+      const completedDate = new Date(t.completed);
+      completedDate.setHours(0,0,0,0);
+      return completedDate.getTime() === today.getTime();
+    }
+    if (!t.due) return true; // no due date: always show
+    const due = parseEventDate(t.due);
+    due.setHours(0,0,0,0);
+    return due <= in3days;
+  });
+
+  // Sort: incomplete first by due date, then done ones
+  visible.sort((a, b) => {
+    const aDone = a.status === 'COMPLETED';
+    const bDone = b.status === 'COMPLETED';
+    if (aDone && !bDone) return 1;
+    if (!aDone && bDone) return -1;
+    if (!a.due && !b.due) return a.summary.localeCompare(b.summary);
+    if (!a.due) return 1;
+    if (!b.due) return -1;
+    return parseEventDate(a.due) - parseEventDate(b.due);
+  });
+
+  const shown = visible.slice(0, 10);
+
+  if (shown.length === 0) {
+    container.innerHTML = '<div class="task-empty">No upcoming tasks</div>';
+    return;
+  }
+
+  container.innerHTML = shown.map(t => {
+    const isDone = t.status === 'COMPLETED';
+    let dueLabel = '';
+    let dueClass = '';
+    if (t.due) {
+      const due = parseEventDate(t.due);
+      due.setHours(0,0,0,0);
+      const diff = Math.round((due - today) / 86400000);
+      dueLabel = diff === 0 ? 'Today' : diff === 1 ? 'Tomorrow' : formatDateInput(due);
+      dueClass = diff < 0 ? 'overdue' : diff === 0 ? 'due-today' : '';
+    }
+    return `<div class="task-item${isDone?' done':''}" data-url="${t.url}" data-calurl="${t.calendarUrl}">
+      <div class="task-check" data-url="${t.url}" data-calurl="${t.calendarUrl}" title="${isDone?'Completed':'Mark complete'}">${isDone?'✓':''}</div>
+      <div class="task-body">
+        <div class="task-summary" title="${t.summary}">${t.summary}</div>
+        ${dueLabel ? `<div class="task-due ${dueClass}">${dueLabel}</div>` : ''}
+      </div>
+      <button class="task-delete" data-url="${t.url}" data-calurl="${t.calendarUrl}" title="Delete">×</button>
+    </div>`;
+  }).join('');
+
+  // Wire check buttons
+  container.querySelectorAll('.task-check').forEach(el => {
+    el.addEventListener('click', async () => {
+      const task = state.tasks.find(t => t.url === el.dataset.url);
+      if (!task || task.status === 'COMPLETED') return;
+      try {
+        await apiPost('/tasks/complete', {
+          ...state.connection,
+          calendar_url: el.dataset.calurl,
+          task_url: el.dataset.url,
+        });
+        await loadTasks();
+      } catch (e) { alert('Error completing task: ' + e.message); }
+    });
+  });
+
+  // Wire delete buttons
+  container.querySelectorAll('.task-delete').forEach(el => {
+    el.addEventListener('click', async e => {
+      e.stopPropagation();
+      if (!confirm('Delete this task?')) return;
+      try {
+        await apiPost('/tasks/delete', {
+          ...state.connection,
+          calendar_url: el.dataset.calurl,
+          task_url: el.dataset.url,
+        });
+        await loadTasks();
+      } catch (e) { alert('Error deleting task: ' + e.message); }
+    });
+  });
+}
+
+// Task add row toggle
+document.getElementById('task-toggle-add').addEventListener('click', () => {
+  const row = document.getElementById('task-add-row');
+  const visible = row.style.display !== 'none';
+  row.style.display = visible ? 'none' : 'flex';
+  if (!visible) document.getElementById('task-input').focus();
+});
+
+async function submitTask() {
+  const summary = document.getElementById('task-input').value.trim();
+  if (!summary) return;
+  const dueRaw = document.getElementById('task-due-input').value.trim();
+  const due = dueRaw ? parseDateInput(dueRaw) : null;
+
+  // Use first calendar
+  const calUrl = state.calendars[0]?.url;
+  if (!calUrl) { alert('No calendar available'); return; }
+
+  try {
+    await apiPost('/tasks/create', {
+      ...state.connection,
+      calendar_url: calUrl,
+      summary,
+      due: due || undefined,
+    });
+    document.getElementById('task-input').value = '';
+    document.getElementById('task-due-input').value = '';
+    document.getElementById('task-add-row').style.display = 'none';
+    await loadTasks();
+  } catch (e) { alert('Error creating task: ' + e.message); }
+}
+
+document.getElementById('task-submit').addEventListener('click', submitTask);
+document.getElementById('task-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') submitTask();
+});
 
 // ── Reload Button ──
 document.getElementById('reload-btn').addEventListener('click', () => {
