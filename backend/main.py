@@ -377,7 +377,8 @@ async def complete_task(req: TaskCompleteRequest):
             if component.name == "VTODO":
                 component["STATUS"] = "COMPLETED"
                 from datetime import datetime, timezone as tz
-                component["COMPLETED"] = datetime.now(tz.utc)
+                from icalendar import vDatetime
+                component["COMPLETED"] = vDatetime(datetime.now(tz.utc))
                 break
         todo.data = todo_cal.to_ical().decode()
         todo.save()
