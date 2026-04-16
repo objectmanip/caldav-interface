@@ -150,8 +150,7 @@ async def create_event(req: EventCreateRequest):
             end_date = date.fromisoformat(req.end)
             location_line = f"LOCATION:{req.location}" if req.location else ""
             rrule_line = f"RRULE:{req.rrule}" if req.rrule else ""
-            extra = "
-".join(filter(None, [location_line, rrule_line]))
+            extra = "/n".join(filter(None, [location_line, rrule_line]))
             ical = f"""BEGIN:VCALENDAR
 VERSION:2.0
 PRODID:-//CalDAV Frontend//EN
@@ -168,8 +167,7 @@ END:VCALENDAR"""
             end_dt = datetime.fromisoformat(req.end)
             location_line = f"LOCATION:{req.location}" if req.location else ""
             rrule_line = f"RRULE:{req.rrule}" if req.rrule else ""
-            extra = "
-".join(filter(None, [location_line, rrule_line]))
+            extra = "\n".join(filter(None, [location_line, rrule_line]))
             ical = f"""BEGIN:VCALENDAR
 VERSION:2.0
 PRODID:-//CalDAV Frontend//EN
