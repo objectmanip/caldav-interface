@@ -967,17 +967,19 @@
       <button class="logout-btn" id="logout-btn">Logout</button>
     </div>
     <div id="task-section">
-      <div class="task-section-header">
-        <span class="task-section-title">Tasks</span>
-        <button class="task-add-btn" id="task-toggle-add" title="Add task">+</button>
+      <div class="task-section-header" id="task-section-toggle" style="cursor:pointer" title="Toggle tasks">
+        <span class="task-section-title">Tasks <span id="task-chevron" style="font-size:0.8rem;transition:transform 0.2s;display:inline-block">▶</span></span>
+        <button class="task-add-btn" id="task-toggle-add" title="Add task" style="display:none">+</button>
       </div>
-      <div id="task-add-row" class="task-add-row" style="display:none">
-        <input type="text" id="task-input" placeholder="New task…">
-        <input type="text" id="task-due-input" class="task-add-date" placeholder="DD-MM-YYYY">
-        <select id="task-calendar-select" class="task-cal-select"></select>
-        <button class="task-submit-btn" id="task-submit">↵</button>
+      <div id="task-body" style="display:none">
+        <div id="task-add-row" class="task-add-row" style="display:none">
+          <input type="text" id="task-input" placeholder="New task…">
+          <input type="text" id="task-due-input" class="task-add-date" placeholder="DD-MM-YYYY">
+          <select id="task-calendar-select" class="task-cal-select"></select>
+          <button class="task-submit-btn" id="task-submit">↵</button>
+        </div>
+        <div id="task-list"></div>
       </div>
-      <div id="task-list"></div>
     </div>
     <div class="sidebar-section">Calendars</div>
     <div id="calendar-list"></div>
@@ -1100,6 +1102,8 @@ let state = {
   eventCache: {},      // key -> { events, fetchedAt }
   cacheTTL: 4 * 7 * 24 * 60 * 60 * 1000, // 4 weeks in ms
   tasks: [],
+  tasksLoaded: false,
+  tasksOpen: false,
   view: 'month',
   cursor: new Date(),
   editingEvent: null,
@@ -1203,7 +1207,6 @@ function initApp() {
 
   renderSidebar();
   loadEventsAndRender();
-  loadTasks();
 }
 
 // ── Sidebar ──
@@ -2027,9 +2030,11 @@ async function loadTasks() {
   try {
     const data = await apiPost('/tasks', state.connection);
     state.tasks = data.tasks;
+    state.tasksLoaded = true;
     renderTasks();
   } catch (e) {
     console.error('Tasks load error:', e);
+    document.getElementById('task-list').innerHTML = '<div class="task-empty">Failed to load tasks</div>';
   }
 }
 
@@ -2127,13 +2132,28 @@ function renderTasks() {
   });
 }
 
+// Task section toggle (collapse/expand + lazy load)
+document.getElementById('task-section-toggle').addEventListener('click', async () => {
+  state.tasksOpen = !state.tasksOpen;
+  const body = document.getElementById('task-body');
+  const chevron = document.getElementById('task-chevron');
+  const addBtn = document.getElementById('task-toggle-add');
+  body.style.display = state.tasksOpen ? 'block' : 'none';
+  chevron.style.transform = state.tasksOpen ? 'rotate(90deg)' : 'rotate(0deg)';
+  addBtn.style.display = state.tasksOpen ? 'inline' : 'none';
+  if (state.tasksOpen && !state.tasksLoaded) {
+    document.getElementById('task-list').innerHTML = '<div class="task-empty">Loading…</div>';
+    await loadTasks();
+  }
+});
+
 // Task add row toggle
-document.getElementById('task-toggle-add').addEventListener('click', () => {
+document.getElementById('task-toggle-add').addEventListener('click', e => {
+  e.stopPropagation(); // don't collapse the section
   const row = document.getElementById('task-add-row');
   const visible = row.style.display !== 'none';
   row.style.display = visible ? 'none' : 'flex';
   if (!visible) {
-    // Populate calendar select
     const sel = document.getElementById('task-calendar-select');
     sel.innerHTML = state.calendars.map(c =>
       `<option value="${c.url}">${c.name}</option>`
