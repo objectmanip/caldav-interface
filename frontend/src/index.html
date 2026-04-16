@@ -1280,6 +1280,13 @@ function renderMonth(container) {
       return cellDate >= evStart && cellDate <= evEnd;
     });
 
+    // All-day events first
+    dayEvents.sort((a, b) => {
+      if (a.all_day && !b.all_day) return -1;
+      if (!a.all_day && b.all_day) return 1;
+      return parseEventDate(a.start) - parseEventDate(b.start);
+    });
+
     html += `<div class="month-cell${!isCurrentMonth?' other-month':''}${isToday?' today':''}" data-date="${dateStr}">
       <div class="day-num">${cur.getDate()}</div>`;
 

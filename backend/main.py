@@ -70,10 +70,14 @@ def get_client(url: str, username: str, password: str):
 
 
 def parse_event(event_obj):
+    """Parse all VEVENT components from a calendar object, returning a list."""
+    results = []
     try:
         cal = Calendar.from_ical(event_obj.data)
         for component in cal.walk():
-            if component.name == "VEVENT":
+            if component.name != "VEVENT":
+                continue
+            try:
                 dtstart = component.get("dtstart")
                 dtend = component.get("dtend")
 
@@ -96,8 +100,16 @@ def parse_event(event_obj):
                         rrule_str = rrule_val.to_ical().decode()
                     except Exception:
                         rrule_str = ""
-                return {
-                    "uid": str(component.get("uid", "")),
+
+                # Use recurrence-id or uid+start to make a unique URL-like key
+                uid = str(component.get("uid", ""))
+                recurrence_id = component.get("recurrence-id")
+                url = str(event_obj.url)
+                if recurrence_id:
+                    url = f"{url}#{uid}-{start_str}"
+
+                results.append({
+                    "uid": uid,
                     "summary": str(component.get("summary", "(No Title)")),
                     "description": str(component.get("description", "")),
                     "location": str(component.get("location", "")),
@@ -105,11 +117,13 @@ def parse_event(event_obj):
                     "start": start_str,
                     "end": end_str,
                     "all_day": all_day,
-                    "url": str(event_obj.url),
-                }
+                    "url": url,
+                })
+            except Exception:
+                continue
     except Exception:
-        return None
-    return None
+        pass
+    return results
 
 
 @app.post("/api/calendars")
@@ -143,8 +157,7 @@ async def get_events(req: EventsRequest):
 
         result = []
         for ev in events:
-            parsed = parse_event(ev)
-            if parsed:
+            for parsed in parse_event(ev):
                 result.append(parsed)
 
         return {"events": result}
