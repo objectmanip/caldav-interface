@@ -375,6 +375,21 @@
     width: 110px;
     flex-shrink: 0;
   }
+  .task-cal-select {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 0.85rem;
+    padding: 6px 8px;
+    outline: none;
+    cursor: pointer;
+    flex-shrink: 0;
+    max-width: 110px;
+  }
+  .task-cal-select:focus { border-color: var(--accent); }
+
   .task-submit-btn {
     background: var(--accent);
     border: none;
@@ -959,6 +974,7 @@
       <div id="task-add-row" class="task-add-row" style="display:none">
         <input type="text" id="task-input" placeholder="New task…">
         <input type="text" id="task-due-input" class="task-add-date" placeholder="DD-MM-YYYY">
+        <select id="task-calendar-select" class="task-cal-select"></select>
         <button class="task-submit-btn" id="task-submit">↵</button>
       </div>
       <div id="task-list"></div>
@@ -2116,7 +2132,14 @@ document.getElementById('task-toggle-add').addEventListener('click', () => {
   const row = document.getElementById('task-add-row');
   const visible = row.style.display !== 'none';
   row.style.display = visible ? 'none' : 'flex';
-  if (!visible) document.getElementById('task-input').focus();
+  if (!visible) {
+    // Populate calendar select
+    const sel = document.getElementById('task-calendar-select');
+    sel.innerHTML = state.calendars.map(c =>
+      `<option value="${c.url}">${c.name}</option>`
+    ).join('');
+    document.getElementById('task-input').focus();
+  }
 });
 
 async function submitTask() {
@@ -2125,8 +2148,7 @@ async function submitTask() {
   const dueRaw = document.getElementById('task-due-input').value.trim();
   const due = dueRaw ? parseDateInput(dueRaw) : null;
 
-  // Use first calendar
-  const calUrl = state.calendars[0]?.url;
+  const calUrl = document.getElementById('task-calendar-select').value || state.calendars[0]?.url;
   if (!calUrl) { alert('No calendar available'); return; }
 
   try {
