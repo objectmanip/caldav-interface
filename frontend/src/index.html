@@ -352,12 +352,13 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: all 0.15s;
+    transition: border-color 0.15s, color 0.15s;
     font-family: var(--font);
     flex-shrink: 0;
   }
   .reload-btn:hover { border-color: var(--accent); color: var(--accent); }
-  .reload-btn.spinning { animation: spin 0.7s linear infinite; color: var(--accent); border-color: var(--accent); }
+  .reload-btn.spinning { color: var(--accent); border-color: var(--accent); }
+  .reload-btn.spinning .reload-icon { display: inline-block; animation: spin 0.7s linear infinite; }
 
   /* ── Calendar Views ── */
   #calendar-view {
@@ -822,7 +823,7 @@
       <button class="nav-btn" id="nav-next">&#8594;</button>
       <button class="today-btn" id="today-btn">Today</button>
       <span id="current-title"></span>
-      <button class="reload-btn" id="reload-btn" title="Reload events">↻</button>
+      <button class="reload-btn" id="reload-btn" title="Reload events"><span class="reload-icon">↻</span></button>
       <div class="view-tabs">
         <button class="view-tab active" data-view="month">Month</button>
         <button class="view-tab" data-view="week">Week</button>
@@ -862,11 +863,11 @@
     <div class="form-row" id="ev-date-row" style="display:none">
       <div class="field">
         <label>Start date</label>
-        <input type="date" id="ev-start-date">
+        <input type="text" id="ev-start-date" placeholder="DD-MM-YYYY">
       </div>
       <div class="field">
         <label>End date</label>
-        <input type="date" id="ev-end-date">
+        <input type="text" id="ev-end-date" placeholder="DD-MM-YYYY">
       </div>
     </div>
     <div class="field">
@@ -1436,9 +1437,20 @@ function renderWeek(container) {
       const cellDate = new Date(day); cellDate.setHours(0,0,0,0);
       const evStart = new Date(s); evStart.setHours(0,0,0,0);
       const evEnd = new Date(e); evEnd.setHours(0,0,0,0);
-      // end is exclusive for all-day (DTEND is day after), subtract 1 day
       evEnd.setDate(evEnd.getDate() - 1);
       return cellDate >= evStart && cellDate <= evEnd;
+    }).sort((a, b) => {
+      const aDur = parseEventDate(a.end) - parseEventDate(a.start);
+      const bDur = parseEventDate(b.end) - parseEventDate(b.start);
+      // Multi-day (duration > 1 day) before single-day
+      const aMulti = aDur > 86400000;
+      const bMulti = bDur > 86400000;
+      if (aMulti && !bMulti) return -1;
+      if (!aMulti && bMulti) return 1;
+      // Within same group: sort by start date, then alphabetically
+      const startDiff = parseEventDate(a.start) - parseEventDate(b.start);
+      if (startDiff !== 0) return startDiff;
+      return a.summary.localeCompare(b.summary);
     });
     alldayHtml += `<div class="week-allday-cell">`;
     allDayEvs.forEach(ev => {
@@ -1604,6 +1616,21 @@ function getTextColor(hex) {
 }
 
 // ── Modals ──
+// Format: Date -> "DD-MM-YYYY" for all-day inputs
+function formatDateInput(d) {
+  if (!d) return '';
+  const pad = n => String(n).padStart(2,'0');
+  return `${pad(d.getDate())}-${pad(d.getMonth()+1)}-${d.getFullYear()}`;
+}
+
+// Parse "DD-MM-YYYY" -> "YYYY-MM-DD" for backend
+function parseDateInput(str) {
+  if (!str) return '';
+  const m = str.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+  if (!m) return '';
+  return `${m[3]}-${m[2]}-${m[1]}`;
+}
+
 // Format: Date -> "DD-MM-YYYY HH:MM"
 function formatDateTimeInput(d) {
   if (!d) return '';
@@ -1637,8 +1664,9 @@ function openNewEventModal(dateStr, hour) {
   const endD = new Date(syear, smon-1, sday, endH, 0);
   document.getElementById('ev-start').value = formatDateTimeInput(startD);
   document.getElementById('ev-end').value = formatDateTimeInput(endD);
-  document.getElementById('ev-start-date').value = dateStr;
-  document.getElementById('ev-end-date').value = dateStr;
+  const [syear2, smon2, sday2] = dateStr.split('-').map(Number);
+  document.getElementById('ev-start-date').value = formatDateInput(new Date(syear2, smon2-1, sday2));
+  document.getElementById('ev-end-date').value = formatDateInput(new Date(syear2, smon2-1, sday2));
 
   // Fill calendar select
   const sel = document.getElementById('ev-calendar');
@@ -1688,8 +1716,9 @@ document.getElementById('modal-save').addEventListener('click', async () => {
 
   let start, end;
   if (allDay) {
-    start = document.getElementById('ev-start-date').value;
-    end = document.getElementById('ev-end-date').value || start;
+    start = parseDateInput(document.getElementById('ev-start-date').value);
+    end = parseDateInput(document.getElementById('ev-end-date').value) || start;
+    if (!start) { alert('Invalid date format. Use DD-MM-YYYY'); saveText.textContent = 'Save'; return; }
   } else {
     start = parseDateTimeInput(document.getElementById('ev-start').value);
     end = parseDateTimeInput(document.getElementById('ev-end').value);
@@ -1797,8 +1826,9 @@ function openEditEventModal(ev) {
   toggleAlldayFields();
 
   if (isAllDay) {
-    document.getElementById('ev-start-date').value = ev.start ? ev.start.slice(0,10) : '';
-    document.getElementById('ev-end-date').value = ev.end ? ev.end.slice(0,10) : '';
+    const parseD = str => { if (!str) return null; const [y,m,d] = str.slice(0,10).split('-').map(Number); return new Date(y,m-1,d); };
+    document.getElementById('ev-start-date').value = ev.start ? formatDateInput(parseD(ev.start)) : '';
+    document.getElementById('ev-end-date').value = ev.end ? formatDateInput(parseD(ev.end)) : '';
   } else {
     const s = parseEventDate(ev.start);
     const e = parseEventDate(ev.end);
