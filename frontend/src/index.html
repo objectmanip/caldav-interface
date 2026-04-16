@@ -340,6 +340,25 @@
   }
   .today-btn:hover { border-color: var(--accent); color: var(--accent); }
 
+  .reload-btn {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 1.1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+    font-family: var(--font);
+    flex-shrink: 0;
+  }
+  .reload-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .reload-btn.spinning { animation: spin 0.7s linear infinite; color: var(--accent); border-color: var(--accent); }
+
   /* ── Calendar Views ── */
   #calendar-view {
     flex: 1;
@@ -762,6 +781,7 @@
       <button class="nav-btn" id="nav-next">&#8594;</button>
       <button class="today-btn" id="today-btn">Today</button>
       <span id="current-title"></span>
+      <button class="reload-btn" id="reload-btn" title="Reload events">↻</button>
       <div class="view-tabs">
         <button class="view-tab active" data-view="month">Month</button>
         <button class="view-tab" data-view="week">Week</button>
@@ -866,6 +886,8 @@ let state = {
   calendarColors: {},
   visibleCalendars: new Set(),
   events: [],
+  eventCache: {},      // key -> { events, fetchedAt }
+  cacheTTL: 4 * 7 * 24 * 60 * 60 * 1000, // 4 weeks in ms
   view: 'month',
   cursor: new Date(),
   editingEvent: null,
@@ -1006,27 +1028,88 @@ function toggleCalendar(url, el) {
   renderView();
 }
 
+// ── Events Cache ──
+function getCacheKey(calUrl, start, end) {
+  return `${calUrl}|${start}|${end}`;
+}
+
+function getCachedEvents(calUrl, start, end) {
+  const key = getCacheKey(calUrl, start, end);
+  const entry = state.eventCache[key];
+  if (!entry) return null;
+  if (Date.now() - entry.fetchedAt > state.cacheTTL) {
+    delete state.eventCache[key];
+    return null;
+  }
+  return entry.events;
+}
+
+function setCachedEvents(calUrl, start, end, events) {
+  const key = getCacheKey(calUrl, start, end);
+  state.eventCache[key] = { events, fetchedAt: Date.now() };
+}
+
+function bustCache() {
+  state.eventCache = {};
+}
+
 // ── Events Loading ──
-async function loadEventsAndRender() {
-  setLoading(30);
-  try {
-    const { start, end } = getViewRange();
+async function loadEventsAndRender(forceReload = false) {
+  if (forceReload) bustCache();
+
+  const { start, end } = getCacheRange();
+  const startStr = start.toISOString().slice(0,10);
+  const endStr = end.toISOString().slice(0,10);
+
+  // Check if all calendars are cached
+  const allCached = !forceReload && state.calendars.every(cal =>
+    getCachedEvents(cal.url, startStr, endStr) !== null
+  );
+
+  if (allCached) {
     const allEvents = [];
+    state.calendars.forEach(cal => {
+      getCachedEvents(cal.url, startStr, endStr).forEach(ev => allEvents.push(ev));
+    });
+    state.events = allEvents;
+    renderView();
+    return;
+  }
+
+  // Fetch from server
+  setLoading(20);
+  const btn = document.getElementById('reload-btn');
+  btn.classList.add('spinning');
+
+  try {
+    const allEvents = [];
+    let progress = 20;
+    const step = 70 / Math.max(state.calendars.length, 1);
     for (const cal of state.calendars) {
-      try {
-        const data = await apiPost('/events', {
-          ...state.connection,
-          calendar_url: cal.url,
-          start: start.toISOString().slice(0,10),
-          end: end.toISOString().slice(0,10),
-        });
-        data.events.forEach(ev => {
-          ev.calendarUrl = cal.url;
-          ev.color = state.calendarColors[cal.url];
-          ev.calendarName = cal.name;
-          allEvents.push(ev);
-        });
-      } catch {}
+      // Use cache for this calendar if available and not force-reloading
+      let events = !forceReload ? getCachedEvents(cal.url, startStr, endStr) : null;
+      if (events === null) {
+        try {
+          const data = await apiPost('/events', {
+            ...state.connection,
+            calendar_url: cal.url,
+            start: startStr,
+            end: endStr,
+          });
+          events = data.events.map(ev => ({
+            ...ev,
+            calendarUrl: cal.url,
+            color: state.calendarColors[cal.url],
+            calendarName: cal.name,
+          }));
+          setCachedEvents(cal.url, startStr, endStr, events);
+        } catch {
+          events = [];
+        }
+      }
+      events.forEach(ev => allEvents.push(ev));
+      progress += step;
+      setLoading(Math.round(progress));
     }
     state.events = allEvents;
     setLoading(100);
@@ -1034,7 +1117,24 @@ async function loadEventsAndRender() {
   } catch (e) {
     setLoading(100);
     renderView();
+  } finally {
+    btn.classList.remove('spinning');
   }
+}
+
+// Cache range: always fetch a fixed 4-week window centered on cursor
+// so navigating within cached range never triggers a fetch
+function getCacheRange() {
+  const today = new Date(state.cursor);
+  today.setHours(0,0,0,0);
+  // Go back to start of the week containing the cursor
+  const start = new Date(today);
+  start.setDate(today.getDate() - dayOfWeekMon(today));
+  // Then expand to cover 4 full weeks back and 4 forward (8 weeks total)
+  start.setDate(start.getDate() - 28);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 56);
+  return { start, end };
 }
 
 function getViewRange() {
@@ -1066,14 +1166,14 @@ document.getElementById('nav-prev').addEventListener('click', () => navigate(-1)
 document.getElementById('nav-next').addEventListener('click', () => navigate(1));
 document.getElementById('today-btn').addEventListener('click', () => {
   state.cursor = new Date();
-  loadEventsAndRender();
+  loadEventsAndRender(); // will use cache if available
 });
 document.querySelectorAll('.view-tab').forEach(tab => {
   tab.addEventListener('click', () => {
     document.querySelectorAll('.view-tab').forEach(t => t.classList.remove('active'));
     tab.classList.add('active');
     state.view = tab.dataset.view;
-    loadEventsAndRender();
+    renderView(); // no fetch, use cached events
   });
 });
 
@@ -1083,7 +1183,7 @@ function navigate(dir) {
   else if (state.view === 'week') d.setDate(d.getDate() + dir * 7);
   else d.setDate(d.getDate() + dir * 28);
   state.cursor = new Date(d);
-  loadEventsAndRender();
+  loadEventsAndRender(); // will use cache if available
 }
 
 // ── Render View ──
@@ -1492,7 +1592,7 @@ document.getElementById('modal-save').addEventListener('click', async () => {
     }
     state.editingEvent = null;
     closeModal('event-modal');
-    loadEventsAndRender();
+    loadEventsAndRender(true);
   } catch (e) {
     alert('Error saving event: ' + e.message);
   } finally {
@@ -1535,7 +1635,7 @@ function showDetail(ev) {
         event_url: ev.url,
       });
       closeModal('detail-modal');
-      loadEventsAndRender();
+      loadEventsAndRender(true);
     } catch (e) {
       alert('Error deleting: ' + e.message);
     }
@@ -1582,6 +1682,11 @@ function openEditEventModal(ev) {
 
   openModal('event-modal');
 }
+
+// ── Reload Button ──
+document.getElementById('reload-btn').addEventListener('click', () => {
+  loadEventsAndRender(true);
+});
 
 // ── Logout ──
 document.getElementById('logout-btn').addEventListener('click', () => {
