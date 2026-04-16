@@ -1033,7 +1033,7 @@ function getViewRange() {
   const d = state.cursor;
   if (state.view === 'month') {
     const start = new Date(d.getFullYear(), d.getMonth(), 1);
-    start.setDate(start.getDate() - start.getDay());
+    start.setDate(start.getDate() - dayOfWeekMon(start));
     const end = new Date(d.getFullYear(), d.getMonth() + 1, 0);
     end.setDate(end.getDate() + (6 - dayOfWeekMon(end)) + 1);
     return { start, end };
@@ -1209,7 +1209,7 @@ function renderWeek(container) {
   weekDays.forEach(day => {
     const isToday = isSameDay(day, today);
     headerHtml += `<div class="week-header-cell${isToday?' today':''}">
-      <div class="wday">${days[day.getDay()]}</div>
+      <div class="wday">${days[dayOfWeekMon(day)]}</div>
       <div class="wdate">${day.getDate()}</div>
     </div>`;
   });
