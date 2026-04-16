@@ -23,8 +23,6 @@ PORT=3000 docker compose up -d
 
 ## Compatible Servers
 
-Works with any CalDAV-compliant server:
-
 - **Nextcloud** — URL: `https://your-nextcloud.com/remote.php/dav`
 - **Radicale** — URL: `http://radicale-host:5232`
 - **Baikal** — URL: `https://your-baikal.com/dav.php`
