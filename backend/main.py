@@ -359,29 +359,36 @@ async def create_task(req: TaskCreateRequest):
         raise HTTPException(status_code=400, detail=str(e))
 
 
-def get_todo_by_url(client, calendar_url: str, task_url: str):
-    """Fetch a VTODO object by URL using the DAV client directly."""
-    import caldav
-    obj = caldav.CalendarObjectResource(client=client, url=task_url)
-    obj.load()
-    return obj
-
-
 @app.post("/api/tasks/complete")
 async def complete_task(req: TaskCompleteRequest):
     try:
-        client = get_client(req.url, req.username, req.password)
-        todo = get_todo_by_url(client, req.calendar_url, req.task_url)
-        todo_cal = Calendar.from_ical(todo.data)
+        import requests as req_lib
+        from datetime import datetime, timezone as tz
+        from icalendar import vDatetime, vText
+
+        # Fetch raw iCal via HTTP
+        resp = req_lib.get(
+            req.task_url,
+            auth=(req.username, req.password),
+            headers={"Accept": "text/calendar"},
+        )
+        resp.raise_for_status()
+
+        todo_cal = Calendar.from_ical(resp.text)
         for component in todo_cal.walk():
             if component.name == "VTODO":
-                component["STATUS"] = "COMPLETED"
-                from datetime import datetime, timezone as tz
-                from icalendar import vDatetime
+                component["STATUS"] = vText("COMPLETED")
                 component["COMPLETED"] = vDatetime(datetime.now(tz.utc))
                 break
-        todo.data = todo_cal.to_ical().decode()
-        todo.save()
+
+        # PUT back
+        put_resp = req_lib.put(
+            req.task_url,
+            auth=(req.username, req.password),
+            data=todo_cal.to_ical(),
+            headers={"Content-Type": "text/calendar; charset=utf-8"},
+        )
+        put_resp.raise_for_status()
         return {"status": "completed"}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -390,9 +397,12 @@ async def complete_task(req: TaskCompleteRequest):
 @app.post("/api/tasks/delete")
 async def delete_task(req: TaskDeleteRequest):
     try:
-        client = get_client(req.url, req.username, req.password)
-        todo = get_todo_by_url(client, req.calendar_url, req.task_url)
-        todo.delete()
+        import requests as req_lib
+        resp = req_lib.delete(
+            req.task_url,
+            auth=(req.username, req.password),
+        )
+        resp.raise_for_status()
         return {"status": "deleted"}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
