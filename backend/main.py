@@ -50,6 +50,20 @@ class EventDeleteRequest(BaseModel):
     calendar_url: str
     event_url: str
 
+class EventUpdateRequest(BaseModel):
+    url: str
+    username: str
+    password: str
+    calendar_url: str
+    event_url: str
+    summary: str
+    start: str
+    end: str
+    description: Optional[str] = ""
+    location: Optional[str] = ""
+    rrule: Optional[str] = ""
+    all_day: bool = False
+
 
 def get_client(url: str, username: str, password: str):
     return caldav.DAVClient(url=url, username=username, password=password)
@@ -138,50 +152,76 @@ async def get_events(req: EventsRequest):
         raise HTTPException(status_code=400, detail=str(e))
 
 
+def build_ical(summary, description, location, rrule, start, end, all_day):
+    from datetime import date as date_type
+    extra_lines = []
+    if location:
+        extra_lines.append(f"LOCATION:{location}")
+    if rrule:
+        extra_lines.append(f"RRULE:{rrule}")
+    extra = ("\n" + "\n".join(extra_lines)) if extra_lines else ""
+
+    if all_day:
+        start_date = date_type.fromisoformat(start)
+        end_date = date_type.fromisoformat(end)
+        return (
+            "BEGIN:VCALENDAR\n"
+            "VERSION:2.0\n"
+            "PRODID:-//CalDAV Frontend//EN\n"
+            "BEGIN:VEVENT\n"
+            f"SUMMARY:{summary}\n"
+            f"DESCRIPTION:{description}\n"
+            f"DTSTART;VALUE=DATE:{start_date.strftime('%Y%m%d')}\n"
+            f"DTEND;VALUE=DATE:{end_date.strftime('%Y%m%d')}"
+            f"{extra}\n"
+            "END:VEVENT\n"
+            "END:VCALENDAR"
+        )
+    else:
+        start_dt = datetime.fromisoformat(start)
+        end_dt = datetime.fromisoformat(end)
+        return (
+            "BEGIN:VCALENDAR\n"
+            "VERSION:2.0\n"
+            "PRODID:-//CalDAV Frontend//EN\n"
+            "BEGIN:VEVENT\n"
+            f"SUMMARY:{summary}\n"
+            f"DESCRIPTION:{description}\n"
+            f"DTSTART:{start_dt.strftime('%Y%m%dT%H%M%SZ')}\n"
+            f"DTEND:{end_dt.strftime('%Y%m%dT%H%M%SZ')}"
+            f"{extra}\n"
+            "END:VEVENT\n"
+            "END:VCALENDAR"
+        )
+
+
 @app.post("/api/events/create")
 async def create_event(req: EventCreateRequest):
     try:
         client = get_client(req.url, req.username, req.password)
         cal = client.calendar(url=req.calendar_url)
-
-        if req.all_day:
-            from datetime import date
-            start_date = date.fromisoformat(req.start)
-            end_date = date.fromisoformat(req.end)
-            location_line = f"LOCATION:{req.location}" if req.location else ""
-            rrule_line = f"RRULE:{req.rrule}" if req.rrule else ""
-            extra = "/n".join(filter(None, [location_line, rrule_line]))
-            ical = f"""BEGIN:VCALENDAR
-VERSION:2.0
-PRODID:-//CalDAV Frontend//EN
-BEGIN:VEVENT
-SUMMARY:{req.summary}
-DESCRIPTION:{req.description}
-DTSTART;VALUE=DATE:{start_date.strftime('%Y%m%d')}
-DTEND;VALUE=DATE:{end_date.strftime('%Y%m%d')}
-{extra}
-END:VEVENT
-END:VCALENDAR"""
-        else:
-            start_dt = datetime.fromisoformat(req.start)
-            end_dt = datetime.fromisoformat(req.end)
-            location_line = f"LOCATION:{req.location}" if req.location else ""
-            rrule_line = f"RRULE:{req.rrule}" if req.rrule else ""
-            extra = "\n".join(filter(None, [location_line, rrule_line]))
-            ical = f"""BEGIN:VCALENDAR
-VERSION:2.0
-PRODID:-//CalDAV Frontend//EN
-BEGIN:VEVENT
-SUMMARY:{req.summary}
-DESCRIPTION:{req.description}
-DTSTART:{start_dt.strftime('%Y%m%dT%H%M%SZ')}
-DTEND:{end_dt.strftime('%Y%m%dT%H%M%SZ')}
-{extra}
-END:VEVENT
-END:VCALENDAR"""
-
+        ical = build_ical(req.summary, req.description, req.location, req.rrule,
+                          req.start, req.end, req.all_day)
         cal.save_event(ical)
         return {"status": "created"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/events/update")
+async def update_event(req: EventUpdateRequest):
+    try:
+        client = get_client(req.url, req.username, req.password)
+        cal = client.calendar(url=req.calendar_url)
+        try:
+            old_event = cal.event_by_url(req.event_url)
+            old_event.delete()
+        except Exception:
+            pass
+        ical = build_ical(req.summary, req.description, req.location, req.rrule,
+                          req.start, req.end, req.all_day)
+        cal.save_event(ical)
+        return {"status": "updated"}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
