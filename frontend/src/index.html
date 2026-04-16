@@ -1318,34 +1318,42 @@ function renderMonth(container) {
     el.addEventListener('click', () => openNewEventModal(el.dataset.date));
   });
 
-  // Dynamic overflow: hide events that don't fit, show "+N more"
+  // Dynamic overflow: always show all-day events, hide timed ones that don't fit
   requestAnimationFrame(() => {
     container.querySelectorAll('.month-cell').forEach(cell => {
       const overflow = cell.querySelector('.month-overflow');
       if (!overflow) return;
-      const events = [...cell.querySelectorAll('.month-event')];
-      if (!events.length) return;
+      const allEventEls = [...cell.querySelectorAll('.month-event')];
+      if (!allEventEls.length) return;
+
+      // Reset visibility first
+      allEventEls.forEach(el => { el.style.display = ''; });
+      overflow.style.display = 'none';
+
       const dayNum = cell.querySelector('.day-num');
       const cellH = cell.clientHeight;
       const usedH = dayNum ? dayNum.offsetHeight + 4 : 0;
       const overflowH = 22;
       let available = cellH - usedH - overflowH;
       let hidden = 0;
-      for (const ev of events) {
-        const evH = ev.offsetHeight + 2;
-        if (available >= evH) {
-          ev.style.display = '';
+
+      for (const el of allEventEls) {
+        const evH = el.offsetHeight + 2;
+        // All-day events (no time prefix span) always shown — only hide timed events
+        const isTimed = !!el.querySelector('span[style*="opacity:0.75"]');
+        if (!isTimed) {
+          // All-day: always show, just deduct height
+          available -= evH;
+        } else if (available >= evH) {
           available -= evH;
         } else {
-          ev.style.display = 'none';
+          el.style.display = 'none';
           hidden++;
         }
       }
       if (hidden > 0) {
         overflow.style.display = 'block';
         overflow.textContent = `+${hidden} more`;
-      } else {
-        overflow.style.display = 'none';
       }
     });
   });
@@ -1674,7 +1682,7 @@ function showDetail(ev) {
     ${calName}<br><span style="margin-top:4px;display:inline-block">${timeStr}</span>
   `;
   const locEl = document.getElementById('detail-location');
-  locEl.innerHTML = ev.location ? `<span style="color:var(--accent);opacity:0.8">📍 ${ev.location}</span>` : '';
+  locEl.innerHTML = ev.location ? `<a href="https://www.google.com/maps/search/${encodeURIComponent(ev.location)}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;cursor:pointer" title="Open in Google Maps">📍 ${ev.location}</a>` : '';
   document.getElementById('detail-desc').textContent = ev.description || '';
 
   document.getElementById('detail-delete').onclick = async () => {
