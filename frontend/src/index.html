@@ -262,6 +262,8 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    min-width: 0;
+    min-height: 0;
   }
 
   /* ── Toolbar ── */
@@ -342,15 +344,17 @@
   #calendar-view {
     flex: 1;
     overflow: auto;
+    overflow-x: hidden;
     padding: 0;
+    min-width: 0;
   }
 
   /* Month View */
   .month-grid {
     display: grid;
     grid-template-columns: repeat(7, 1fr);
-    height: 100%;
-    min-height: 600px;
+    width: 100%;
+    min-height: 100%;
   }
 
   .month-header-row {
@@ -374,12 +378,14 @@
   .month-cell {
     border-right: 1px solid var(--border);
     border-bottom: 1px solid var(--border);
-    padding: 8px 6px;
-    min-height: 110px;
+    padding: 6px 4px;
+    min-height: 100px;
     cursor: pointer;
     transition: background 0.1s;
     position: relative;
     vertical-align: top;
+    min-width: 0;
+    overflow: hidden;
   }
   .month-cell:nth-child(7n) { border-right: none; }
   .month-cell:hover { background: var(--surface2); }
@@ -425,6 +431,7 @@
     display: flex;
     flex-direction: column;
     height: 100%;
+    min-height: 0;
   }
   .week-header {
     display: grid;
@@ -463,6 +470,7 @@
     grid-template-columns: 56px repeat(7, 1fr);
     flex: 1;
     overflow: auto;
+    min-height: 0;
   }
   .time-gutter {
     border-right: 1px solid var(--border);
@@ -1167,8 +1175,10 @@ function renderMonth(container) {
     dayEvents.slice(0,3).forEach(ev => {
       const textColor = getTextColor(ev.color);
       const locSuffix = ev.location ? ` · ${ev.location}` : '';
+      const evS = parseEventDate(ev.start);
+      const timePrefix = (!ev.all_day && evS) ? `<span style='opacity:0.75;margin-right:3px'>${formatTime(evS)}</span>` : '';
       html += `<span class="month-event" data-evurl="${ev.url}" data-calurl="${ev.calendarUrl}"
-        style="background:${ev.color};color:${textColor}" title="${ev.summary}${locSuffix}">${ev.summary}${ev.location ? `<span style='opacity:0.7;font-size:1rem'> · ${ev.location}</span>` : ''}</span>`;
+        style="background:${ev.color};color:${textColor}" title="${ev.summary}${locSuffix}">${timePrefix}${ev.summary}${ev.location ? `<span style='opacity:0.7;font-size:1rem'> · ${ev.location}</span>` : ''}</span>`;
     });
     if (dayEvents.length > 3) {
       html += `<span style="font-size:1rem;color:var(--text-muted);padding:0 4px">+${dayEvents.length - 3} more</span>`;
