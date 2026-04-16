@@ -82,12 +82,12 @@ jobs:
           docker build \
             -t $REGISTRY_HOST/$IMAGE-frontend:$VERSION \
             -t $REGISTRY_HOST/$IMAGE-frontend:latest \
-            -f ./frontend/Dockerfile ./frontend
+            -f ./frontend/Dockerfile \
+            .
           docker push $REGISTRY_HOST/$IMAGE-frontend:$VERSION
           docker push $REGISTRY_HOST/$IMAGE-frontend:latest
         env:
           REGISTRY_HOST: ${{ secrets.REGISTRY_HOST }}
-
       - name: Send finished notification
         env:
           TITLE: "GITEA-Actions"
