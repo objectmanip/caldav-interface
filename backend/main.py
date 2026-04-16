@@ -1,14 +1,11 @@
-from fastapi import FastAPI, HTTPException, Body
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import caldav
 from caldav.elements import dav
 from icalendar import Calendar
-import json
-import os
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from typing import Optional
-import traceback
 
 app = FastAPI(title="CalDAV Proxy")
 
@@ -25,23 +22,19 @@ class ConnectRequest(BaseModel):
     username: str
     password: str
 
+class EventsRequest(BaseModel):
+    url: str
+    username: str
+    password: str
+    calendar_url: str
+    start: Optional[str] = None
+    end: Optional[str] = None
+
 class EventCreateRequest(BaseModel):
     url: str
     username: str
     password: str
     calendar_url: str
-    summary: str
-    start: str
-    end: str
-    description: Optional[str] = ""
-    all_day: bool = False
-
-class EventUpdateRequest(BaseModel):
-    url: str
-    username: str
-    password: str
-    calendar_url: str
-    event_url: str
     summary: str
     start: str
     end: str
@@ -55,8 +48,10 @@ class EventDeleteRequest(BaseModel):
     calendar_url: str
     event_url: str
 
+
 def get_client(url: str, username: str, password: str):
     return caldav.DAVClient(url=url, username=username, password=password)
+
 
 def parse_event(event_obj):
     try:
@@ -65,10 +60,10 @@ def parse_event(event_obj):
             if component.name == "VEVENT":
                 dtstart = component.get("dtstart")
                 dtend = component.get("dtend")
-                
+
                 start_val = dtstart.dt if dtstart else None
                 end_val = dtend.dt if dtend else None
-                
+
                 all_day = False
                 if isinstance(start_val, datetime):
                     start_str = start_val.isoformat()
@@ -87,9 +82,10 @@ def parse_event(event_obj):
                     "all_day": all_day,
                     "url": str(event_obj.url),
                 }
-    except Exception as e:
+    except Exception:
         return None
     return None
+
 
 @app.post("/api/calendars")
 async def get_calendars(req: ConnectRequest):
@@ -101,45 +97,42 @@ async def get_calendars(req: ConnectRequest):
         for cal in calendars:
             props = cal.get_properties([dav.DisplayName()])
             name = props.get("{DAV:}displayname", str(cal.url).split("/")[-2] or str(cal.url))
-            result.append({
-                "url": str(cal.url),
-                "name": name,
-            })
+            result.append({"url": str(cal.url), "name": name})
         return {"calendars": result}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+
 @app.post("/api/events")
-async def get_events(req: ConnectRequest, calendar_url: str = Body(..., embed=True),
-                     start: Optional[str] = Body(None, embed=True),
-                     end: Optional[str] = Body(None, embed=True)):
+async def get_events(req: EventsRequest):
     try:
         client = get_client(req.url, req.username, req.password)
-        cal = client.calendar(url=calendar_url)
-        
-        if start and end:
-            start_dt = datetime.fromisoformat(start).replace(tzinfo=timezone.utc)
-            end_dt = datetime.fromisoformat(end).replace(tzinfo=timezone.utc)
+        cal = client.calendar(url=req.calendar_url)
+
+        if req.start and req.end:
+            start_dt = datetime.fromisoformat(req.start).replace(tzinfo=timezone.utc)
+            end_dt = datetime.fromisoformat(req.end).replace(tzinfo=timezone.utc)
             events = cal.date_search(start=start_dt, end=end_dt, expand=True)
         else:
             events = cal.events()
-        
+
         result = []
         for ev in events:
             parsed = parse_event(ev)
             if parsed:
                 result.append(parsed)
-        
+
         return {"events": result}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
 
 @app.post("/api/events/create")
 async def create_event(req: EventCreateRequest):
     try:
         client = get_client(req.url, req.username, req.password)
         cal = client.calendar(url=req.calendar_url)
-        
+
         if req.all_day:
             from datetime import date
             start_date = date.fromisoformat(req.start)
@@ -167,11 +160,12 @@ DTSTART:{start_dt.strftime('%Y%m%dT%H%M%SZ')}
 DTEND:{end_dt.strftime('%Y%m%dT%H%M%SZ')}
 END:VEVENT
 END:VCALENDAR"""
-        
+
         cal.save_event(ical)
         return {"status": "created"}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
 
 @app.post("/api/events/delete")
 async def delete_event(req: EventDeleteRequest):
@@ -183,6 +177,7 @@ async def delete_event(req: EventDeleteRequest):
         return {"status": "deleted"}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
 
 @app.get("/api/health")
 async def health():
