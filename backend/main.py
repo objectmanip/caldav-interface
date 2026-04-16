@@ -1,3 +1,5 @@
+# Copyright (C) 2026 Florian Blümel
+# SPDX-License-Identifier: AGPL-3.0-or-later
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
