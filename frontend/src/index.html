@@ -1321,13 +1321,28 @@ function renderMonth(container) {
       cellDate.setHours(0,0,0,0);
       const evStart = new Date(s); evStart.setHours(0,0,0,0);
       const evEnd = new Date(e); evEnd.setHours(0,0,0,0);
+      if (ev.all_day) {
+        // DTEND is exclusive for all-day events
+        return cellDate >= evStart && cellDate < evEnd;
+      }
       return cellDate >= evStart && cellDate <= evEnd;
     });
 
-    // All-day events first
+    // Sort: all-day first, multi-day before single-day, then by start, then alphabetically
     dayEvents.sort((a, b) => {
       if (a.all_day && !b.all_day) return -1;
       if (!a.all_day && b.all_day) return 1;
+      if (a.all_day && b.all_day) {
+        const aDur = parseEventDate(a.end) - parseEventDate(a.start);
+        const bDur = parseEventDate(b.end) - parseEventDate(b.start);
+        const aMulti = aDur > 86400000;
+        const bMulti = bDur > 86400000;
+        if (aMulti && !bMulti) return -1;
+        if (!aMulti && bMulti) return 1;
+        const startDiff = parseEventDate(a.start) - parseEventDate(b.start);
+        if (startDiff !== 0) return startDiff;
+        return a.summary.localeCompare(b.summary);
+      }
       return parseEventDate(a.start) - parseEventDate(b.start);
     });
 
@@ -1439,8 +1454,8 @@ function renderWeek(container) {
       const cellDate = new Date(day); cellDate.setHours(0,0,0,0);
       const evStart = new Date(s); evStart.setHours(0,0,0,0);
       const evEnd = new Date(e); evEnd.setHours(0,0,0,0);
-      evEnd.setDate(evEnd.getDate() - 1);
-      return cellDate >= evStart && cellDate <= evEnd;
+      // DTEND for all-day is exclusive (day after last), so use < not <=
+      return cellDate >= evStart && cellDate < evEnd;
     }).sort((a, b) => {
       const aDur = parseEventDate(a.end) - parseEventDate(a.start);
       const bDur = parseEventDate(b.end) - parseEventDate(b.start);
