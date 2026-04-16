@@ -1058,8 +1058,8 @@ async function loadEventsAndRender(forceReload = false) {
   if (forceReload) bustCache();
 
   const { start, end } = getCacheRange();
-  const startStr = start.toISOString().slice(0,10);
-  const endStr = end.toISOString().slice(0,10);
+  const startStr = localDateKey(start);
+  const endStr = localDateKey(end);
 
   // Check if all calendars are cached
   const allCached = !forceReload && state.calendars.every(cal =>
@@ -1227,6 +1227,12 @@ function parseEventDate(str) {
   return new Date(str);
 }
 
+// Returns "YYYY-MM-DD" in LOCAL time (avoids UTC offset shifting the date)
+function localDateKey(d) {
+  const pad = n => String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+}
+
 function isSameDay(a, b) {
   return a.getFullYear() === b.getFullYear() &&
     a.getMonth() === b.getMonth() &&
@@ -1258,7 +1264,7 @@ function renderMonth(container) {
   for (let i = 0; i < totalCells; i++) {
     const isCurrentMonth = cur.getMonth() === d.getMonth();
     const isToday = isSameDay(cur, today);
-    const dateStr = cur.toISOString().slice(0,10);
+    const dateStr = localDateKey(cur);
     const dayEvents = events.filter(ev => {
       const s = parseEventDate(ev.start);
       const e = parseEventDate(ev.end) || s;
@@ -1334,9 +1340,9 @@ function renderWeek(container) {
 
   const events = getVisibleEvents();
   weekDays.forEach((day, di) => {
-    bodyHtml += `<div class="week-day-col" data-date="${day.toISOString().slice(0,10)}">`;
+    bodyHtml += `<div class="week-day-col" data-date="${localDateKey(day)}">`;
     for (let h = 0; h < 24; h++) {
-      bodyHtml += `<div class="week-hour-cell" data-date="${day.toISOString().slice(0,10)}" data-hour="${h}"></div>`;
+      bodyHtml += `<div class="week-hour-cell" data-date="${localDateKey(day)}" data-hour="${h}"></div>`;
     }
     // Place events
     const dayEvs = events.filter(ev => {
@@ -1402,7 +1408,7 @@ function renderAgenda(container) {
   const grouped = {};
   const cur = new Date(start);
   while (cur < end) {
-    const key = cur.toISOString().slice(0,10);
+    const key = localDateKey(cur);
     grouped[key] = [];
     cur.setDate(cur.getDate() + 1);
   }
@@ -1410,7 +1416,7 @@ function renderAgenda(container) {
   events.forEach(ev => {
     const s = parseEventDate(ev.start);
     if (!s) return;
-    const key = s.toISOString().slice(0,10);
+    const key = localDateKey(s);
     if (grouped[key]) grouped[key].push(ev);
   });
 
@@ -1601,7 +1607,7 @@ document.getElementById('modal-save').addEventListener('click', async () => {
 });
 
 document.getElementById('add-event-btn').addEventListener('click', () => {
-  const today = new Date().toISOString().slice(0,10);
+  const today = localDateKey(new Date());
   openNewEventModal(today, 9);
 });
 
