@@ -409,7 +409,7 @@
     display: block;
     padding: 2px 6px;
     border-radius: 3px;
-    font-size: 0.72rem;
+    font-size: 0.82rem;
     font-weight: 500;
     margin-bottom: 2px;
     white-space: nowrap;
@@ -496,8 +496,8 @@
     left: 2px;
     right: 2px;
     border-radius: 4px;
-    padding: 2px 5px;
-    font-size: 0.7rem;
+    padding: 3px 6px;
+    font-size: 0.82rem;
     font-weight: 600;
     overflow: hidden;
     cursor: pointer;
@@ -801,6 +801,22 @@
       </div>
     </div>
     <div class="field">
+      <label>Location</label>
+      <input type="text" id="ev-location" placeholder="Optional location">
+    </div>
+    <div class="field">
+      <label>Repeat</label>
+      <select id="ev-rrule">
+        <option value="">Does not repeat</option>
+        <option value="FREQ=DAILY">Daily</option>
+        <option value="FREQ=WEEKLY">Weekly</option>
+        <option value="FREQ=BIWEEKLY">Every 2 weeks</option>
+        <option value="FREQ=MONTHLY">Monthly</option>
+        <option value="FREQ=YEARLY">Yearly</option>
+        <option value="FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR">Weekdays (Mon–Fri)</option>
+      </select>
+    </div>
+    <div class="field">
       <label>Description</label>
       <textarea id="ev-description" placeholder="Optional description"></textarea>
     </div>
@@ -817,7 +833,8 @@
 <div class="modal-overlay" id="detail-modal">
   <div class="modal">
     <h3 id="detail-title" style="margin-bottom:12px"></h3>
-    <div id="detail-meta" style="color:var(--text-dim);font-size:0.85rem;margin-bottom:16px;font-family:var(--mono)"></div>
+    <div id="detail-meta" style="color:var(--text-dim);font-size:0.85rem;margin-bottom:8px;font-family:var(--mono)"></div>
+    <div id="detail-location" style="font-size:0.85rem;color:var(--text-dim);margin-bottom:8px"></div>
     <div id="detail-desc" style="font-size:0.88rem;color:var(--text-dim)"></div>
     <div class="modal-actions">
       <button class="btn btn-danger" id="detail-delete">Delete</button>
@@ -904,6 +921,7 @@ document.getElementById('l-connect').addEventListener('click', async () => {
   try {
     const data = await apiPost('/calendars', { url, username, password });
     state.connection = { url, username, password };
+    localStorage.setItem('caldav_last_url', url);
     state.calendars = data.calendars;
     saveConnection();
     initApp();
@@ -1136,8 +1154,9 @@ function renderMonth(container) {
 
     dayEvents.slice(0,3).forEach(ev => {
       const textColor = getTextColor(ev.color);
+      const locSuffix = ev.location ? ` · ${ev.location}` : '';
       html += `<span class="month-event" data-evurl="${ev.url}" data-calurl="${ev.calendarUrl}"
-        style="background:${ev.color};color:${textColor}" title="${ev.summary}">${ev.summary}</span>`;
+        style="background:${ev.color};color:${textColor}" title="${ev.summary}${locSuffix}">${ev.summary}${ev.location ? `<span style='opacity:0.7;font-size:0.75rem'> · ${ev.location}</span>` : ''}</span>`;
     });
     if (dayEvents.length > 3) {
       html += `<span style="font-size:0.68rem;color:var(--text-muted);padding:0 4px">+${dayEvents.length - 3} more</span>`;
@@ -1211,9 +1230,9 @@ function renderWeek(container) {
       const textColor = getTextColor(ev.color);
       bodyHtml += `<div class="week-event" data-evurl="${ev.url}"
         style="top:${top}px;height:${height}px;background:${ev.color};color:${textColor}"
-        title="${ev.summary}">
+        title="${ev.summary}${ev.location ? ' · ' + ev.location : ''}">
         ${ev.summary}
-        <div style="font-size:0.65rem;opacity:0.8">${formatTime(s)}</div>
+        <div style="font-size:0.72rem;opacity:0.8">${formatTime(s)}${ev.location ? ` · ${ev.location}` : ''}</div>
       </div>`;
     });
     bodyHtml += '</div>';
@@ -1298,6 +1317,7 @@ function renderAgenda(container) {
         <div class="agenda-time">${timeStr}</div>
         <div class="agenda-event-content">
           <div class="agenda-event-title">${ev.summary}</div>
+          ${ev.location ? `<div class="agenda-event-desc" style="color:var(--accent);opacity:0.8">📍 ${ev.location}</div>` : ''}
           ${ev.description ? `<div class="agenda-event-desc">${ev.description.slice(0,80)}</div>` : ''}
         </div>
       </div>`;
@@ -1338,6 +1358,8 @@ function openNewEventModal(dateStr, hour) {
   state.editingEvent = null;
   document.getElementById('modal-title').textContent = 'New Event';
   document.getElementById('ev-summary').value = '';
+  document.getElementById('ev-location').value = '';
+  document.getElementById('ev-rrule').value = '';
   document.getElementById('ev-description').value = '';
   document.getElementById('ev-allday').checked = !hour && hour !== 0;
   toggleAlldayFields();
@@ -1392,6 +1414,8 @@ document.getElementById('modal-save').addEventListener('click', async () => {
   const calUrl = document.getElementById('ev-calendar').value;
   const allDay = document.getElementById('ev-allday').checked;
   const description = document.getElementById('ev-description').value;
+  const location = document.getElementById('ev-location').value.trim();
+  const rrule = document.getElementById('ev-rrule').value;
 
   let start, end;
   if (allDay) {
@@ -1411,7 +1435,7 @@ document.getElementById('modal-save').addEventListener('click', async () => {
     await apiPost('/events/create', {
       ...state.connection,
       calendar_url: calUrl,
-      summary, description, start, end,
+      summary, description, location, rrule, start, end,
       all_day: allDay,
     });
     closeModal('event-modal');
@@ -1445,6 +1469,8 @@ function showDetail(ev) {
     <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${color};margin-right:6px"></span>
     ${calName}<br><span style="margin-top:4px;display:inline-block">${timeStr}</span>
   `;
+  const locEl = document.getElementById('detail-location');
+  locEl.innerHTML = ev.location ? `<span style="color:var(--accent);opacity:0.8">📍 ${ev.location}</span>` : '';
   document.getElementById('detail-desc').textContent = ev.description || '';
 
   document.getElementById('detail-delete').onclick = async () => {

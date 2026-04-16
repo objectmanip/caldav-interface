@@ -39,6 +39,8 @@ class EventCreateRequest(BaseModel):
     start: str
     end: str
     description: Optional[str] = ""
+    location: Optional[str] = ""
+    rrule: Optional[str] = ""
     all_day: bool = False
 
 class EventDeleteRequest(BaseModel):
@@ -73,10 +75,19 @@ def parse_event(event_obj):
                     start_str = start_val.isoformat() if start_val else ""
                     end_str = end_val.isoformat() if end_val else start_str
 
+                rrule_val = component.get("rrule")
+                rrule_str = ""
+                if rrule_val:
+                    try:
+                        rrule_str = rrule_val.to_ical().decode()
+                    except Exception:
+                        rrule_str = ""
                 return {
                     "uid": str(component.get("uid", "")),
                     "summary": str(component.get("summary", "(No Title)")),
                     "description": str(component.get("description", "")),
+                    "location": str(component.get("location", "")),
+                    "rrule": rrule_str,
                     "start": start_str,
                     "end": end_str,
                     "all_day": all_day,
@@ -137,6 +148,10 @@ async def create_event(req: EventCreateRequest):
             from datetime import date
             start_date = date.fromisoformat(req.start)
             end_date = date.fromisoformat(req.end)
+            location_line = f"LOCATION:{req.location}" if req.location else ""
+            rrule_line = f"RRULE:{req.rrule}" if req.rrule else ""
+            extra = "
+".join(filter(None, [location_line, rrule_line]))
             ical = f"""BEGIN:VCALENDAR
 VERSION:2.0
 PRODID:-//CalDAV Frontend//EN
@@ -145,11 +160,16 @@ SUMMARY:{req.summary}
 DESCRIPTION:{req.description}
 DTSTART;VALUE=DATE:{start_date.strftime('%Y%m%d')}
 DTEND;VALUE=DATE:{end_date.strftime('%Y%m%d')}
+{extra}
 END:VEVENT
 END:VCALENDAR"""
         else:
             start_dt = datetime.fromisoformat(req.start)
             end_dt = datetime.fromisoformat(req.end)
+            location_line = f"LOCATION:{req.location}" if req.location else ""
+            rrule_line = f"RRULE:{req.rrule}" if req.rrule else ""
+            extra = "
+".join(filter(None, [location_line, rrule_line]))
             ical = f"""BEGIN:VCALENDAR
 VERSION:2.0
 PRODID:-//CalDAV Frontend//EN
@@ -158,6 +178,7 @@ SUMMARY:{req.summary}
 DESCRIPTION:{req.description}
 DTSTART:{start_dt.strftime('%Y%m%dT%H%M%SZ')}
 DTEND:{end_dt.strftime('%Y%m%dT%H%M%SZ')}
+{extra}
 END:VEVENT
 END:VCALENDAR"""
 
