@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Kalender</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=Syne+Mono&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inconsolata:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
     --bg: #0e0e10;
@@ -19,8 +19,8 @@
     --accent-dim: #9dbf3e;
     --danger: #ff5f5f;
     --radius: 8px;
-    --font: 'Syne', sans-serif;
-    --mono: 'Syne Mono', monospace;
+    --font: 'Inconsolata', monospace;
+    --mono: 'Inconsolata', monospace;
     --sidebar: 280px;
   }
 
@@ -1434,7 +1434,7 @@ function showDetail(ev) {
   const e = parseEventDate(ev.end);
   const calName = state.calendars.find(c => c.url === ev.calendarUrl)?.name || '';
   const color = state.calendarColors[ev.calendarUrl] || '#888';
-  
+
   let timeStr = '';
   if (ev.all_day) {
     timeStr = `All day · ${s ? s.toLocaleDateString() : ''}`;
@@ -1477,6 +1477,10 @@ document.getElementById('logout-btn').addEventListener('click', () => {
 
 // ── Auto-login ──
 (async () => {
+  // Restore last used URL into the login field
+  const lastUrl = localStorage.getItem('caldav_last_url');
+  if (lastUrl) document.getElementById('l-url').value = lastUrl;
+
   const saved = loadConnection();
   if (saved) {
     try {
