@@ -838,6 +838,7 @@
     <div id="detail-desc" style="font-size:1rem;color:var(--text-dim)"></div>
     <div class="modal-actions">
       <button class="btn btn-danger" id="detail-delete">Delete</button>
+      <button class="btn btn-ghost" id="detail-edit">Edit</button>
       <button class="btn btn-ghost" id="detail-close">Close</button>
     </div>
   </div>
@@ -1367,6 +1368,7 @@ function getTextColor(hex) {
 function openNewEventModal(dateStr, hour) {
   state.editingEvent = null;
   document.getElementById('modal-title').textContent = 'New Event';
+  document.getElementById('modal-save-text').textContent = 'Save';
   document.getElementById('ev-summary').value = '';
   document.getElementById('ev-location').value = '';
   document.getElementById('ev-rrule').value = '';
@@ -1442,12 +1444,23 @@ document.getElementById('modal-save').addEventListener('click', async () => {
   saveText.innerHTML = '<span class="spinner"></span>';
 
   try {
-    await apiPost('/events/create', {
-      ...state.connection,
-      calendar_url: calUrl,
-      summary, description, location, rrule, start, end,
-      all_day: allDay,
-    });
+    if (state.editingEvent) {
+      await apiPost('/events/update', {
+        ...state.connection,
+        calendar_url: state.editingEvent.calendarUrl,
+        event_url: state.editingEvent.url,
+        summary, description, location, rrule, start, end,
+        all_day: allDay,
+      });
+    } else {
+      await apiPost('/events/create', {
+        ...state.connection,
+        calendar_url: calUrl,
+        summary, description, location, rrule, start, end,
+        all_day: allDay,
+      });
+    }
+    state.editingEvent = null;
     closeModal('event-modal');
     loadEventsAndRender();
   } catch (e) {
@@ -1498,7 +1511,51 @@ function showDetail(ev) {
     }
   };
 
+  document.getElementById('detail-edit').onclick = () => {
+    closeModal('detail-modal');
+    setTimeout(() => openEditEventModal(ev), 50);
+  };
+
   openModal('detail-modal');
+}
+
+function openEditEventModal(ev) {
+  state.editingEvent = ev;
+  document.getElementById('modal-title').textContent = 'Edit Event';
+  document.getElementById('modal-save-text').textContent = 'Save changes';
+
+  document.getElementById('ev-summary').value = ev.summary || '';
+  document.getElementById('ev-location').value = ev.location || '';
+  document.getElementById('ev-description').value = ev.description || '';
+  document.getElementById('ev-rrule').value = ev.rrule || '';
+
+  // Fill calendar select and select current calendar
+  const sel = document.getElementById('ev-calendar');
+  sel.innerHTML = state.calendars.map(c =>
+    `<option value="${c.url}"${c.url === ev.calendarUrl ? ' selected' : ''}>${c.name}</option>`
+  ).join('');
+
+  // Set allday + dates
+  const isAllDay = ev.all_day;
+  document.getElementById('ev-allday').checked = isAllDay;
+  toggleAlldayFields();
+
+  if (isAllDay) {
+    document.getElementById('ev-start-date').value = ev.start ? ev.start.slice(0,10) : '';
+    document.getElementById('ev-end-date').value = ev.end ? ev.end.slice(0,10) : '';
+  } else {
+    const s = parseEventDate(ev.start);
+    const e = parseEventDate(ev.end);
+    const toLocal = d => {
+      if (!d) return '';
+      const pad = n => String(n).padStart(2,'0');
+      return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    };
+    document.getElementById('ev-start').value = toLocal(s);
+    document.getElementById('ev-end').value = toLocal(e);
+  }
+
+  openModal('event-modal');
 }
 
 // ── Logout ──
