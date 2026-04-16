@@ -359,12 +359,19 @@ async def create_task(req: TaskCreateRequest):
         raise HTTPException(status_code=400, detail=str(e))
 
 
+def get_todo_by_url(client, calendar_url: str, task_url: str):
+    """Fetch a VTODO object by URL using the DAV client directly."""
+    import caldav
+    obj = caldav.CalendarObjectResource(client=client, url=task_url)
+    obj.load()
+    return obj
+
+
 @app.post("/api/tasks/complete")
 async def complete_task(req: TaskCompleteRequest):
     try:
         client = get_client(req.url, req.username, req.password)
-        cal = client.calendar(url=req.calendar_url)
-        todo = cal.todo_by_url(req.task_url)
+        todo = get_todo_by_url(client, req.calendar_url, req.task_url)
         todo_cal = Calendar.from_ical(todo.data)
         for component in todo_cal.walk():
             if component.name == "VTODO":
@@ -383,8 +390,7 @@ async def complete_task(req: TaskCompleteRequest):
 async def delete_task(req: TaskDeleteRequest):
     try:
         client = get_client(req.url, req.username, req.password)
-        cal = client.calendar(url=req.calendar_url)
-        todo = cal.todo_by_url(req.task_url)
+        todo = get_todo_by_url(client, req.calendar_url, req.task_url)
         todo.delete()
         return {"status": "deleted"}
     except Exception as e:
