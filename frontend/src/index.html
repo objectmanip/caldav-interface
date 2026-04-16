@@ -1321,10 +1321,7 @@ function renderMonth(container) {
       cellDate.setHours(0,0,0,0);
       const evStart = new Date(s); evStart.setHours(0,0,0,0);
       const evEnd = new Date(e); evEnd.setHours(0,0,0,0);
-      if (ev.all_day) {
-        // DTEND is exclusive for all-day events
-        return cellDate >= evStart && cellDate < evEnd;
-      }
+      // all-day end from backend is the actual last day (icalendar converts date to isoformat)
       return cellDate >= evStart && cellDate <= evEnd;
     });
 
@@ -1454,8 +1451,8 @@ function renderWeek(container) {
       const cellDate = new Date(day); cellDate.setHours(0,0,0,0);
       const evStart = new Date(s); evStart.setHours(0,0,0,0);
       const evEnd = new Date(e); evEnd.setHours(0,0,0,0);
-      // DTEND for all-day is exclusive (day after last), so use < not <=
-      return cellDate >= evStart && cellDate < evEnd;
+      // all-day end from backend is the actual last day
+      return cellDate >= evStart && cellDate <= evEnd;
     }).sort((a, b) => {
       const aDur = parseEventDate(a.end) - parseEventDate(a.start);
       const bDur = parseEventDate(b.end) - parseEventDate(b.start);
