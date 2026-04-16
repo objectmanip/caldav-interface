@@ -398,7 +398,7 @@
     border-right: 1px solid var(--border);
     border-bottom: 1px solid var(--border);
     padding: 6px 4px;
-    min-height: 100px;
+    min-height: 120px;
     cursor: pointer;
     transition: background 0.1s;
     position: relative;
@@ -1224,6 +1224,11 @@ function getVisibleEvents() {
 
 function parseEventDate(str) {
   if (!str) return null;
+  // All-day events come as "YYYY-MM-DD" — parse in local time to avoid UTC shift
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+    const [y, m, d] = str.split('-').map(Number);
+    return new Date(y, m - 1, d);
+  }
   return new Date(str);
 }
 
@@ -1278,16 +1283,16 @@ function renderMonth(container) {
     html += `<div class="month-cell${!isCurrentMonth?' other-month':''}${isToday?' today':''}" data-date="${dateStr}">
       <div class="day-num">${cur.getDate()}</div>`;
 
-    dayEvents.slice(0,3).forEach(ev => {
+    dayEvents.forEach((ev, idx) => {
       const textColor = getTextColor(ev.color);
       const locSuffix = ev.location ? ` · ${ev.location}` : '';
       const evS = parseEventDate(ev.start);
       const timePrefix = (!ev.all_day && evS) ? `<span style='opacity:0.75;margin-right:3px'>${formatTime(evS)}</span>` : '';
-      html += `<span class="month-event" data-evurl="${ev.url}" data-calurl="${ev.calendarUrl}"
+      html += `<span class="month-event" data-evurl="${ev.url}" data-calurl="${ev.calendarUrl}" data-idx="${idx}"
         style="background:${ev.color};color:${textColor}" title="${ev.summary}${locSuffix}">${timePrefix}${ev.summary}${ev.location ? `<span style='opacity:0.7;font-size:1rem'> · ${ev.location}</span>` : ''}</span>`;
     });
-    if (dayEvents.length > 3) {
-      html += `<span style="font-size:1rem;color:var(--text-muted);padding:0 4px">+${dayEvents.length - 3} more</span>`;
+    if (dayEvents.length > 0) {
+      html += `<span class="month-overflow" style="display:none;font-size:1rem;color:var(--text-muted);padding:0 4px"></span>`;
     }
     html += '</div>';
     cur.setDate(cur.getDate() + 1);
@@ -1304,6 +1309,38 @@ function renderMonth(container) {
   });
   container.querySelectorAll('.month-cell').forEach(el => {
     el.addEventListener('click', () => openNewEventModal(el.dataset.date));
+  });
+
+  // Dynamic overflow: hide events that don't fit, show "+N more"
+  requestAnimationFrame(() => {
+    container.querySelectorAll('.month-cell').forEach(cell => {
+      const overflow = cell.querySelector('.month-overflow');
+      if (!overflow) return;
+      const events = [...cell.querySelectorAll('.month-event')];
+      if (!events.length) return;
+      const dayNum = cell.querySelector('.day-num');
+      const cellH = cell.clientHeight;
+      const usedH = dayNum ? dayNum.offsetHeight + 4 : 0;
+      const overflowH = 22;
+      let available = cellH - usedH - overflowH;
+      let hidden = 0;
+      for (const ev of events) {
+        const evH = ev.offsetHeight + 2;
+        if (available >= evH) {
+          ev.style.display = '';
+          available -= evH;
+        } else {
+          ev.style.display = 'none';
+          hidden++;
+        }
+      }
+      if (hidden > 0) {
+        overflow.style.display = 'block';
+        overflow.textContent = `+${hidden} more`;
+      } else {
+        overflow.style.display = 'none';
+      }
+    });
   });
 }
 
@@ -1472,7 +1509,8 @@ function renderAgenda(container) {
 // ── Helpers ──
 function formatTime(date) {
   if (!date) return '';
-  return date.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+  const pad = n => String(n).padStart(2,'0');
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 function getTextColor(hex) {
