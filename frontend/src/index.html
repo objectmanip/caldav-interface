@@ -783,11 +783,11 @@
     <div class="form-row" id="ev-time-row">
       <div class="field">
         <label>Start</label>
-        <input type="datetime-local" id="ev-start">
+        <input type="text" id="ev-start" placeholder="DD-MM-YYYY HH:MM">
       </div>
       <div class="field">
         <label>End</label>
-        <input type="datetime-local" id="ev-end">
+        <input type="text" id="ev-end" placeholder="DD-MM-YYYY HH:MM">
       </div>
     </div>
     <div class="form-row" id="ev-date-row" style="display:none">
@@ -1035,11 +1035,11 @@ function getViewRange() {
     const start = new Date(d.getFullYear(), d.getMonth(), 1);
     start.setDate(start.getDate() - start.getDay());
     const end = new Date(d.getFullYear(), d.getMonth() + 1, 0);
-    end.setDate(end.getDate() + (6 - end.getDay()) + 1);
+    end.setDate(end.getDate() + (6 - dayOfWeekMon(end)) + 1);
     return { start, end };
   } else if (state.view === 'week') {
     const start = new Date(d);
-    start.setDate(d.getDate() - d.getDay());
+    start.setDate(d.getDate() - dayOfWeekMon(start));
     const end = new Date(start);
     end.setDate(start.getDate() + 7);
     return { start, end };
@@ -1091,12 +1091,12 @@ function updateTitle() {
   const d = state.cursor;
   const months = ['January','February','March','April','May','June',
     'July','August','September','October','November','December'];
-  const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
   let title = '';
   if (state.view === 'month') title = `${months[d.getMonth()]} ${d.getFullYear()}`;
   else if (state.view === 'week') {
     const start = new Date(d);
-    start.setDate(d.getDate() - d.getDay());
+    start.setDate(d.getDate() - dayOfWeekMon(start));
     const end = new Date(start); end.setDate(start.getDate() + 6);
     title = `${months[start.getMonth()]} ${start.getDate()} – ${start.getMonth() !== end.getMonth() ? months[end.getMonth()]+' ' : ''}${end.getDate()}, ${end.getFullYear()}`;
   } else {
@@ -1125,15 +1125,18 @@ function isSameDay(a, b) {
     a.getDate() === b.getDate();
 }
 
+// Returns 0=Mon ... 6=Sun
+function dayOfWeekMon(d) { return (d.getDay() + 6) % 7; }
+
 // ── Month Render ──
 function renderMonth(container) {
-  const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
   const d = state.cursor;
   const today = new Date();
   const firstDay = new Date(d.getFullYear(), d.getMonth(), 1);
   const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0);
   const startDate = new Date(firstDay);
-  startDate.setDate(startDate.getDate() - startDate.getDay());
+  startDate.setDate(startDate.getDate() - dayOfWeekMon(startDate));
 
   let html = '<div class="month-grid">';
   days.forEach(day => {
@@ -1142,7 +1145,7 @@ function renderMonth(container) {
 
   const events = getVisibleEvents();
   const cur = new Date(startDate);
-  const totalCells = Math.ceil((lastDay.getDate() + firstDay.getDay()) / 7) * 7;
+  const totalCells = Math.ceil((lastDay.getDate() + dayOfWeekMon(firstDay)) / 7) * 7;
 
   for (let i = 0; i < totalCells; i++) {
     const isCurrentMonth = cur.getMonth() === d.getMonth();
@@ -1190,11 +1193,11 @@ function renderMonth(container) {
 
 // ── Week Render ──
 function renderWeek(container) {
-  const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
   const d = state.cursor;
   const today = new Date();
   const weekStart = new Date(d);
-  weekStart.setDate(d.getDate() - d.getDay());
+  weekStart.setDate(d.getDate() - dayOfWeekMon(d));
 
   const weekDays = Array.from({length:7}, (_,i) => {
     const day = new Date(weekStart);
@@ -1314,7 +1317,7 @@ function renderAgenda(container) {
     html += `<div class="agenda-day-group">
       <div class="agenda-day-label${isToday?' today-label':''}">
         <span class="adate">${date.getDate()}</span>
-        <span>${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][date.getDay()]}, ${months[date.getMonth()]}</span>
+        <span>${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][dayOfWeekMon(date)]}, ${months[date.getMonth()]}</span>
       </div>`;
     dayEvs.sort((a,b) => {
       if (a.all_day && !b.all_day) return -1;
@@ -1365,6 +1368,21 @@ function getTextColor(hex) {
 }
 
 // ── Modals ──
+// Format: Date -> "DD-MM-YYYY HH:MM"
+function formatDateTimeInput(d) {
+  if (!d) return '';
+  const pad = n => String(n).padStart(2,'0');
+  return `${pad(d.getDate())}-${pad(d.getMonth()+1)}-${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+// Parse: "DD-MM-YYYY HH:MM" -> ISO string for backend
+function parseDateTimeInput(str) {
+  if (!str) return '';
+  const m = str.match(/^(\d{2})-(\d{2})-(\d{4})\s+(\d{2}):(\d{2})$/);
+  if (!m) return '';
+  return new Date(+m[3], +m[2]-1, +m[1], +m[4], +m[5]).toISOString().slice(0,19);
+}
+
 function openNewEventModal(dateStr, hour) {
   state.editingEvent = null;
   document.getElementById('modal-title').textContent = 'New Event';
@@ -1376,10 +1394,13 @@ function openNewEventModal(dateStr, hour) {
   document.getElementById('ev-allday').checked = !hour && hour !== 0;
   toggleAlldayFields();
 
-  const startDt = dateStr + (hour !== undefined ? `T${String(hour).padStart(2,'0')}:00` : 'T09:00');
-  const endDt = dateStr + (hour !== undefined ? `T${String(hour+1).padStart(2,'0')}:00` : 'T10:00');
-  document.getElementById('ev-start').value = startDt;
-  document.getElementById('ev-end').value = endDt;
+  const startH = hour !== undefined ? hour : 9;
+  const endH = hour !== undefined ? hour + 1 : 10;
+  const [syear, smon, sday] = dateStr.split('-').map(Number);
+  const startD = new Date(syear, smon-1, sday, startH, 0);
+  const endD = new Date(syear, smon-1, sday, endH, 0);
+  document.getElementById('ev-start').value = formatDateTimeInput(startD);
+  document.getElementById('ev-end').value = formatDateTimeInput(endD);
   document.getElementById('ev-start-date').value = dateStr;
   document.getElementById('ev-end-date').value = dateStr;
 
@@ -1434,10 +1455,9 @@ document.getElementById('modal-save').addEventListener('click', async () => {
     start = document.getElementById('ev-start-date').value;
     end = document.getElementById('ev-end-date').value || start;
   } else {
-    start = document.getElementById('ev-start').value.replace('T',' ');
-    end = document.getElementById('ev-end').value.replace('T',' ');
-    start = new Date(start).toISOString().slice(0,19);
-    end = new Date(end).toISOString().slice(0,19);
+    start = parseDateTimeInput(document.getElementById('ev-start').value);
+    end = parseDateTimeInput(document.getElementById('ev-end').value);
+    if (!start || !end) { alert('Invalid date format. Use DD-MM-YYYY HH:MM'); saveText.textContent = 'Save'; return; }
   }
 
   const saveText = document.getElementById('modal-save-text');
@@ -1546,13 +1566,8 @@ function openEditEventModal(ev) {
   } else {
     const s = parseEventDate(ev.start);
     const e = parseEventDate(ev.end);
-    const toLocal = d => {
-      if (!d) return '';
-      const pad = n => String(n).padStart(2,'0');
-      return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-    };
-    document.getElementById('ev-start').value = toLocal(s);
-    document.getElementById('ev-end').value = toLocal(e);
+    document.getElementById('ev-start').value = formatDateTimeInput(s);
+    document.getElementById('ev-end').value = formatDateTimeInput(e);
   }
 
   openModal('event-modal');
